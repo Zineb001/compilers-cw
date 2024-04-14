@@ -328,8 +328,87 @@ public class ConstantFolder
 
 
 	public void optimize() {
-		//ClassGen cgen = new ClassGen(original);
-		//ConstantPoolGen cpgen = cgen.getConstantPool();
+		ClassGen cgen = new ClassGen(original);
+		ConstantPoolGen cpgen = cgen.getConstantPool();
+
+       
+		for (Method method : original.getMethods()) {
+			MethodGen mg = new MethodGen(method, original.getClassName(), cpgen);
+			InstructionList il = mg.getInstructionList();
+			if (il == null) continue;
+			InstructionFinder f = new InstructionFinder(il);
+			System.out.println("Optimizing method: " + method.getName());
+
+			boolean changesMade = false;
+			Set<InstructionHandle> visitedHandles = new HashSet<>();
+			Map<Integer, List<InstructionHandle>> loadMap = new HashMap<>();
+
+
+			for (Iterator<InstructionHandle[]> it = f.search("(StoreInstruction)"); it.hasNext(); ) {
+				InstructionHandle[] match = it.next();
+				StoreInstruction store = (StoreInstruction) match[0].getInstruction();
+				INVOKEVIRTUAL invoke = (INVOKEVIRTUAL) match[0].getInstruction();
+
+				if (visitedHandles.contains(match[0])) {
+					continue; 
+				}
+
+				// Determine if the store is dead 
+				boolean isDead = true;
+				for (InstructionHandle ih = match[0].getNext(); ih != null; ih = ih.getNext()) {
+					Instruction instr = ih.getInstruction();
+					if (instr instanceof LoadInstruction && ((LoadInstruction) instr).getIndex() == store.getIndex()) {
+						isDead = false;
+						break;
+					}
+					if (instr instanceof StoreInstruction && ((StoreInstruction) instr).getIndex() == store.getIndex()) {
+						break;
+					}
+				}
+
+				if (isDead) {
+					System.out.println("Identified dead store at index " + store.getIndex() + " for variable in method " + method.getName());
+
+					// Instructions that contribute to this dead store
+					Set<InstructionHandle> toDelete = new HashSet<>();
+					toDelete.add(match[0]); 
+
+					InstructionHandle current = match[0].getPrev();
+					while (current != null && !(current.getInstruction() instanceof StoreInstruction)){
+						toDelete.add(current);
+						current = current.getPrev();
+					}
+
+					try {
+						for (InstructionHandle ih : toDelete) {
+							System.out.println("Removing instruction: " + ih.toString());
+							il.delete(ih);
+							visitedHandles.add(ih);
+						}
+						changesMade = true;
+					} catch (TargetLostException e) {
+						for (InstructionHandle target : e.getTargets()) {
+							for (InstructionTargeter targeter : target.getTargeters()) {
+								targeter.updateTarget(target, null);
+							}
+						}
+					}
+				} else {
+					System.out.println("Store at index " + store.getIndex() + " is active and used in method " + method.getName());
+				}
+			}
+
+			if (changesMade) {
+				mg.setInstructionList(il);
+				mg.setMaxStack();
+				mg.setMaxLocals();
+				mg.removeNOPs();
+				Method newMethod = mg.getMethod();
+				cgen.replaceMethod(method, newMethod);
+				cgen.setMajor(50);
+				System.out.println("Method " + method.getName() + " optimized and replaced.");
+			}
+		}
 
 		if (this.gen.getClassName().equals("comp0012.target.ConstantVariableFolding")){
 			Method[] methods = this.gen.getMethods();
@@ -349,7 +428,7 @@ public class ConstantFolder
 			}
 		}
 
-		this.optimized = gen.getJavaClass();
+		this.optimized = cgen.getJavaClass();
 	}
 
 
