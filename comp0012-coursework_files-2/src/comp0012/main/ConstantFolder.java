@@ -3,6 +3,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.*;
 
 import org.apache.bcel.classfile.*;
@@ -201,6 +202,129 @@ public class ConstantFolder
 
 		}
 	}
+	public void SimpleFolding(Method method, String className, ConstantPoolGen cpgen) {
+    
+		
+			MethodGen methodGen = new MethodGen(method, this.gen.getClassName(), this.gen.getConstantPool());
+			InstructionList il = methodGen.getInstructionList();
+			
+
+			InstructionFinder f = new InstructionFinder(il);
+			String pattern = "(LDC|LDC_W|LDC2_W) (LDC|LDC_W|LDC2_W) (IADD|ISUB|IMUL|IDIV)";
+	
+			// For each match of the pattern
+			for (Iterator<?> it = f.search(pattern); it.hasNext(); ) {
+				InstructionHandle[] match = (InstructionHandle[]) it.next();
+				Number n1 = (Number) ((LDC) match[0].getInstruction()).getValue(cpgen);
+				Number n2 = (Number) ((LDC) match[1].getInstruction()).getValue(cpgen);
+				int result = 0;
+	
+				// Perform the operation based on the opcode
+				switch (match[2].getInstruction().getOpcode()) {
+	
+					//integer cases
+					case Constants.IADD:
+						result = n1.intValue() + n2.intValue();
+						il.insert(match[0], new LDC(cpgen.addInteger(result)));
+						break;
+	
+					case Constants.ISUB:
+						result = n1.intValue() - n2.intValue();
+						il.insert(match[0], new LDC(cpgen.addInteger(result)));
+						break;
+	
+					case Constants.IMUL:
+						result = n1.intValue() * n2.intValue();
+						il.insert(match[0], new LDC(cpgen.addInteger(result)));
+						break;
+	
+					case Constants.IDIV:
+						if (n2.intValue() != 0) { // Prevent division by zero
+							result = n1.intValue() / n2.intValue();
+							il.insert(match[0], new LDC(cpgen.addInteger(result)));
+						}
+						break;
+	
+					//long cases
+					case Constants.LADD:
+						long lresult = n1.longValue() + n2.longValue();
+						il.insert(match[0], new LDC2_W(cpgen.addLong(lresult)));
+						break;
+					
+					case Constants.LSUB:
+						long lsubResult = n1.longValue() - n2.longValue();
+						il.insert(match[0], new LDC2_W(cpgen.addLong(lsubResult)));
+						break;
+	
+					case Constants.LMUL:
+						long lmulResult = n1.longValue() * n2.longValue();
+						il.insert(match[0], new LDC2_W(cpgen.addLong(lmulResult)));
+						break;
+	
+					case Constants.LDIV:
+						if (n2.longValue() != 0) {
+							long ldivResult = n1.longValue() / n2.longValue();
+							il.insert(match[0], new LDC2_W(cpgen.addLong(ldivResult)));
+							break;
+						}
+					
+					//float cases
+					case Constants.FADD:
+						float fresult = n1.floatValue() + n2.floatValue();
+						il.insert(match[0], new LDC(cpgen.addFloat(fresult)));
+						break;
+					
+					case Constants.FSUB:
+						float fsubResult = n1.floatValue() - n2.floatValue();
+						il.insert(match[0], new LDC(cpgen.addFloat(fsubResult)));
+						break;
+					case Constants.FMUL:
+						float fmulResult = n1.floatValue() * n2.floatValue();
+						il.insert(match[0], new LDC(cpgen.addFloat(fmulResult)));
+						break;
+					case Constants.FDIV:
+						if (n2.floatValue() != 0.0f) {
+							float fdivResult = n1.floatValue() / n2.floatValue();
+							il.insert(match[0], new LDC(cpgen.addFloat(fdivResult)));
+						}
+					//double cases
+					case Constants.DADD:
+						double dresult = n1.doubleValue() + n2.doubleValue();
+						il.insert(match[0], new LDC2_W(cpgen.addDouble(dresult)));
+						break;
+	
+					case Constants.DSUB:
+						double dsubResult = n1.doubleValue() - n2.doubleValue();
+						il.insert(match[0], new LDC2_W(cpgen.addDouble(dsubResult)));
+						break;
+	
+					case Constants.DMUL:
+						double dmulResult = n1.doubleValue() * n2.doubleValue();
+						il.insert(match[0], new LDC2_W(cpgen.addDouble(dmulResult)));
+						break;
+	
+					case Constants.DDIV:
+						if (n2.doubleValue() != 0.0) {
+							double ddivResult = n1.doubleValue() / n2.doubleValue();
+							il.insert(match[0], new LDC2_W(cpgen.addDouble(ddivResult)));
+							break;
+						}
+					}
+	
+				
+				try {
+					il.delete(match[0], match[2]); // Remove the old instructions
+				} catch (TargetLostException e) {
+					e.printStackTrace();
+				}
+				methodGen.setInstructionList(il);
+				methodGen.setMaxStack();
+				methodGen.setMaxLocals();
+				gen.replaceMethod(method, methodGen.getMethod());
+			}
+			
+		
+	}
 
 
 	public void optimize() {
@@ -212,6 +336,15 @@ public class ConstantFolder
 
 			for (Method method : methods) {
 				constantVariable(method, this.gen.getClassName(), this.gen.getConstantPool());
+
+			}
+		}
+
+		if (this.gen.getClassName().equals("comp0012.target.SimpleFolding")){
+			Method[] methods = this.gen.getMethods();
+
+			for (Method method : methods) {
+				SimpleFolding(method, this.gen.getClassName(), this.gen.getConstantPool());
 
 			}
 		}
