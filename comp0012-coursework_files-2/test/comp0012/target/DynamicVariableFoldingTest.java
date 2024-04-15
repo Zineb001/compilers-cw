@@ -8,57 +8,52 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Test dynamic variable folding
  */
 
-public class DynamicVariableFoldingTest
-{
-    DynamicVariableFolding dvf = new DynamicVariableFolding();
-    private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+public class DynamicVariableFoldingTest {
 
-    @Before
-    public void setUpStreams()
-    {
-        System.setOut(new PrintStream(outContent));
-    }
+  private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+  DynamicVariableFolding dvf = new DynamicVariableFolding();
 
-    @After
-    public void cleanUpStreams()
-    {
-        System.setOut(null);
-    }
+  @Before
+  public void setUpStreams() {
+    System.setOut(new PrintStream(outContent));
+  }
 
-    @Test
-    public void testMethodOne()
-    {
-        assertEquals(1301, dvf.methodOne());
-    }
+  @After
+  public void cleanUpStreams() {
+    System.setOut(null);
+  }
 
-    @Test
-    public void testMethodTwoOut()
-    {
-        dvf.methodTwo();
-        assertEquals("true\n", outContent.toString());
-    }
+  @Test
+  public void testMethodOne() {
+    assertEquals(1301, dvf.methodOne());
+  }
 
-    @Test
-    public void testMethodTwoReturn()
-    {
-        assertEquals(true, dvf.methodTwo());
-    }
+  @Test
+  public void testMethodTwoOut() {
+    dvf.methodTwo();
+    assertEquals("true\n", outContent.toString());
+  }
 
-    @Test
-    public void testMethodThree()
-    {
-        assertEquals(84, dvf.methodThree());
-    }
-    
-    @Test
-    public void testMethodFour(){
-        assertEquals(24, dvf.methodFour());
-    }
+  @Test
+  public void testMethodTwoReturn() {
+    assertTrue(dvf.methodTwo());
+  }
+
+  @Test
+  public void testMethodThree() {
+    assertEquals(84, dvf.methodThree());
+  }
+
+  @Test
+  public void testMethodFour() {
+    assertEquals(24, dvf.methodFour());
+  }
 
 
 }
