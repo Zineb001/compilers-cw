@@ -45,7 +45,7 @@ public class ConstantFolder {
 
     for (Method method : methods) {
       MethodGen methodGen = new MethodGen(method, this.gen.getClassName(), this.gen.getConstantPool());
-      dynamicConstantVariable(methodGen);
+      foldConstants(methodGen);
       removeDeadCode(methodGen);
       gen.replaceMethod(method, methodGen.getMethod());
     }
@@ -151,7 +151,7 @@ public class ConstantFolder {
     return false;
   }
 
-  private void dynamicConstantVariable(MethodGen methodGen) {
+  private void foldConstants(MethodGen methodGen) {
 
     if (methodGen.getMethod().getName().equals("<init>")) {
       return;
