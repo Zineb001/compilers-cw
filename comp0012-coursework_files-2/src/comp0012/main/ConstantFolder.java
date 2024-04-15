@@ -5,11 +5,29 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.bcel.classfile.*;
 import org.apache.bcel.generic.*;
 import org.apache.bcel.util.InstructionFinder;
-
+import org.apache.bcel.classfile.ClassParser;
+import org.apache.bcel.classfile.JavaClass;
+import org.apache.bcel.generic.ClassGen;
+import org.apache.bcel.generic.ConstantPoolGen;
+import org.apache.bcel.generic.INVOKEVIRTUAL;
+import org.apache.bcel.generic.Instruction;
+import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.InstructionList;
+import org.apache.bcel.generic.InstructionTargeter;
+import org.apache.bcel.generic.LoadInstruction;
+import org.apache.bcel.generic.MethodGen;
+import org.apache.bcel.generic.StoreInstruction;
+import org.apache.bcel.generic.TargetLostException;
 
 public class ConstantFolder
 {
@@ -325,89 +343,89 @@ public class ConstantFolder
 			
 		
 	}
+	
+	private boolean debugEnabled = false; 
 
+	public void setDebugEnabled(boolean enabled) {
+		this.debugEnabled = enabled;
+	}
 
 	public void optimize() {
 		ClassGen cgen = new ClassGen(original);
 		ConstantPoolGen cpgen = cgen.getConstantPool();
 
-       
-		for (Method method : original.getMethods()) {
-			MethodGen mg = new MethodGen(method, original.getClassName(), cpgen);
-			InstructionList il = mg.getInstructionList();
-			if (il == null) continue;
-			InstructionFinder f = new InstructionFinder(il);
-			System.out.println("Optimizing method: " + method.getName());
+        for (org.apache.bcel.classfile.Method method : original.getMethods()) {
+            MethodGen mg = new MethodGen(method, original.getClassName(), cpgen);
+            InstructionList il = mg.getInstructionList();
+            if (il == null) continue;
+            InstructionFinder f = new InstructionFinder(il);
+            if (debugEnabled) System.out.println("Optimizing method: " + method.getName());
 
-			boolean changesMade = false;
-			Set<InstructionHandle> visitedHandles = new HashSet<>();
-			Map<Integer, List<InstructionHandle>> loadMap = new HashMap<>();
+            boolean changesMade = false;
+            Set<InstructionHandle> visitedHandles = new HashSet<>();
+            Map<Integer, List<InstructionHandle>> loadMap = new HashMap<>();
 
+            for (Iterator<InstructionHandle[]> it = f.search("(StoreInstruction)"); it.hasNext(); ) {
+                InstructionHandle[] match = it.next();
+                StoreInstruction store = (StoreInstruction) match[0].getInstruction();
+                if (visitedHandles.contains(match[0])) {
+                    continue;
+                }
 
-			for (Iterator<InstructionHandle[]> it = f.search("(StoreInstruction)"); it.hasNext(); ) {
-				InstructionHandle[] match = it.next();
-				StoreInstruction store = (StoreInstruction) match[0].getInstruction();
-				INVOKEVIRTUAL invoke = (INVOKEVIRTUAL) match[0].getInstruction();
+                // Determine if the store is dead 
+                boolean isDead = true;
+                for (InstructionHandle ih = match[0].getNext(); ih != null; ih = ih.getNext()) {
+                    Instruction instr = ih.getInstruction();
+                    if (instr instanceof LoadInstruction && ((LoadInstruction) instr).getIndex() == store.getIndex()) {
+                        isDead = false;
+                        break;
+                    }
+                    if (instr instanceof StoreInstruction && ((StoreInstruction) instr).getIndex() == store.getIndex()) {
+                        break;
+                    }
+                }
 
-				if (visitedHandles.contains(match[0])) {
-					continue; 
-				}
+                if (isDead) {
+                    if (debugEnabled) System.out.println("Identified dead store at index " + store.getIndex() + " for variable in method " + method.getName());
 
-				// Determine if the store is dead 
-				boolean isDead = true;
-				for (InstructionHandle ih = match[0].getNext(); ih != null; ih = ih.getNext()) {
-					Instruction instr = ih.getInstruction();
-					if (instr instanceof LoadInstruction && ((LoadInstruction) instr).getIndex() == store.getIndex()) {
-						isDead = false;
-						break;
-					}
-					if (instr instanceof StoreInstruction && ((StoreInstruction) instr).getIndex() == store.getIndex()) {
-						break;
-					}
-				}
+                    Set<InstructionHandle> toDelete = new HashSet<>();
+                    toDelete.add(match[0]);
 
-				if (isDead) {
-					System.out.println("Identified dead store at index " + store.getIndex() + " for variable in method " + method.getName());
+                    InstructionHandle current = match[0].getPrev();
+                    while (current != null && !(current.getInstruction() instanceof StoreInstruction)){
+                        toDelete.add(current);
+                        current = current.getPrev();
+                    }
 
-					// Instructions that contribute to this dead store
-					Set<InstructionHandle> toDelete = new HashSet<>();
-					toDelete.add(match[0]); 
+                    try {
+                        for (InstructionHandle ih : toDelete) {
+                            if (debugEnabled) System.out.println("Removing instruction: " + ih.toString());
+                            il.delete(ih);
+                            visitedHandles.add(ih);
+                        }
+                        changesMade = true;
+                    } catch (TargetLostException e) {
+                        for (InstructionHandle target : e.getTargets()) {
+                            for (InstructionTargeter targeter : target.getTargeters()) {
+                                targeter.updateTarget(target, null);
+                            }
+                        }
+                    }
+                } else {
+                    if (debugEnabled) System.out.println("Store at index " + store.getIndex() + " is active and used in method " + method.getName());
+                }
+            }
 
-					InstructionHandle current = match[0].getPrev();
-					while (current != null && !(current.getInstruction() instanceof StoreInstruction)){
-						toDelete.add(current);
-						current = current.getPrev();
-					}
-
-					try {
-						for (InstructionHandle ih : toDelete) {
-							System.out.println("Removing instruction: " + ih.toString());
-							il.delete(ih);
-							visitedHandles.add(ih);
-						}
-						changesMade = true;
-					} catch (TargetLostException e) {
-						for (InstructionHandle target : e.getTargets()) {
-							for (InstructionTargeter targeter : target.getTargeters()) {
-								targeter.updateTarget(target, null);
-							}
-						}
-					}
-				} else {
-					System.out.println("Store at index " + store.getIndex() + " is active and used in method " + method.getName());
-				}
-			}
-
-			if (changesMade) {
-				mg.setInstructionList(il);
-				mg.setMaxStack();
-				mg.setMaxLocals();
-				mg.removeNOPs();
-				Method newMethod = mg.getMethod();
-				cgen.replaceMethod(method, newMethod);
-				cgen.setMajor(50);
-				System.out.println("Method " + method.getName() + " optimized and replaced.");
-			}
+            if (changesMade) {
+                mg.setInstructionList(il);
+                mg.setMaxStack();
+                mg.setMaxLocals();
+                mg.removeNOPs();
+                org.apache.bcel.classfile.Method newMethod = mg.getMethod();
+                cgen.replaceMethod(method, newMethod);
+                cgen.setMajor(50);
+                if (debugEnabled) System.out.println("Method " + method.getName() + " optimized and replaced.");
+            }
 		}
 
 		if (this.gen.getClassName().equals("comp0012.target.ConstantVariableFolding")){
