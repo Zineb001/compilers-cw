@@ -121,9 +121,8 @@ public class ConstantFolder {
         Collections.reverse(toDelete);
 
         try {
-          for (InstructionHandle ih : toDelete) {
-            il.delete(ih);
-          }
+
+          il.delete(toDelete.get(0), toDelete.get(toDelete.size() - 1));
         } catch (TargetLostException e) {
           System.out.println("Target lost exception");
           for (InstructionHandle target : e.getTargets()) {
